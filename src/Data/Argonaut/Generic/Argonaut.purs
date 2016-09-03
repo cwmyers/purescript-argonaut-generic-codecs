@@ -3,14 +3,14 @@ module Data.Argonaut.Generic.Argonaut where
 
 
 import Prelude
-
 import Control.Alt ((<|>))
 import Data.Argonaut.Core (Json)
-import Data.Argonaut.Generic.Options (Options(..), SumEncoding(..), dummyUserDecoding, dummyUserEncoding)
-import Data.Argonaut.Generic.Encode (genericEncodeJson)
 import Data.Argonaut.Generic.Decode (genericDecodeJson)
-import Data.Generic (class Generic)
+import Data.Argonaut.Generic.Encode (genericEncodeJson)
+import Data.Argonaut.Generic.Options (Options(..), SumEncoding(..), dummyUserDecoding, dummyUserEncoding)
+import Data.Argonaut.Generic.Util (DecodeError)
 import Data.Either (Either)
+import Data.Generic (class Generic)
 
 
 -- | Default for straight forward argonaut encoding.
@@ -38,5 +38,5 @@ encodeJson = genericEncodeJson options
 
 -- | Decode `Json` representation of a value which has a `Generic` type
 -- | with Argonaut options.
-decodeJson :: forall a. (Generic a) => Json -> Either String a
+decodeJson :: forall a. (Generic a) => Json -> Either DecodeError a
 decodeJson = genericDecodeJson options

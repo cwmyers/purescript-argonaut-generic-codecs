@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "purescript-strongcheck-generics": "^0.4.0",
-    "purescript-assert": "^1.0.0"
+    "purescript-assert": "^1.0.0",
+    "purescript-psci-support": "^1.0.0"
   }
 }

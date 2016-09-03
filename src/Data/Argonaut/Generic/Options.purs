@@ -5,9 +5,10 @@
 module Data.Argonaut.Generic.Options where
 
 
-import Data.Argonaut.Core (Json())
-import Data.Generic (GenericSpine, GenericSignature)
+import Data.Argonaut.Core (Json)
+import Data.Argonaut.Generic.Util (History, DecodeError)
 import Data.Either (Either)
+import Data.Generic (GenericSpine, GenericSignature)
 import Data.Maybe (Maybe(..))
 
 
@@ -31,7 +32,7 @@ newtype Options = Options { -- newtype necessary to avoid: https://github.com/pu
 , userEncoding :: Options -> GenericSignature -> GenericSpine -> Maybe Json
 -- | You can choose to decode some data types differently than the generic default.
 -- | Just return Nothing, to relay to generic decoding.
-, userDecoding :: Options -> GenericSignature -> Json -> Maybe (Either String GenericSpine)
+, userDecoding :: Options -> History -> GenericSignature -> Json -> Maybe (Either DecodeError GenericSpine)
 }
 
 data SumEncoding =
@@ -51,5 +52,5 @@ dummyUserEncoding :: Options -> GenericSignature -> GenericSpine -> Maybe Json
 dummyUserEncoding _ _ _ = Nothing
 
 -- | Use this for `userDecodeing` if you don't want any special rules.
-dummyUserDecoding :: Options -> GenericSignature -> Json -> Maybe (Either String GenericSpine)
-dummyUserDecoding _ _ _ = Nothing
+dummyUserDecoding :: Options -> History -> GenericSignature -> Json -> Maybe (Either DecodeError GenericSpine)
+dummyUserDecoding _ _ _ _ = Nothing

@@ -1,37 +1,51 @@
 module Test.Main where
 
-import Prelude
-
-import Data.Argonaut.Core hiding (toNumber)
-import Data.Argonaut.Generic.Options
-import Data.Argonaut.Generic.Encode
-import Data.Argonaut.Generic.Decode
 import Data.Argonaut.Generic.Aeson as Aeson
 import Data.Argonaut.Generic.Argonaut as Argonaut
-import Data.Either
-import Data.Int (toNumber)
-import Data.Tuple
-import Data.Maybe
-import Data.Array
-import Data.Generic
-import Data.Foldable (foldl)
-import Data.List (fromFoldable, List(..))
 import Data.StrMap as SM
-
-import Control.Monad.Eff (Eff())
-import Control.Monad.Eff.Exception (EXCEPTION())
-import Control.Monad.Eff.Random (RANDOM())
-import Control.Monad.Eff.Console
-import Data.StrMap as M
-
-import Test.Assert (assert', ASSERT)
-import Test.StrongCheck
-import Test.StrongCheck.Gen
-import Test.StrongCheck.Generic
+import Control.Monad.Eff (Eff)
+import Control.Monad.Eff.Console (CONSOLE, log)
+import Control.Monad.Eff.Exception (EXCEPTION)
+import Control.Monad.Eff.Random (RANDOM)
+import Data.Argonaut.Generic.Aeson (decodeJson)
+import Data.Argonaut.Generic.Decode (genericDecodeJson, genericDecodeJson')
+import Data.Argonaut.Generic.Encode (genericEncodeJson, genericEncodeJson')
+import Data.Argonaut.Generic.Options (Options(..))
+import Data.Argonaut.Generic.Util (decodeError, DecodeError)
+import Data.Argonaut.Parser (jsonParser)
+import Data.Bifunctor (lmap)
+import Data.Either (Either(..))
+import Data.Generic (gShow, class Generic, isValidSpine, gEq)
+import Data.Int (toNumber)
+import Data.List ((:), List(Nil, Cons))
+import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
+import Prelude (class Show, class Eq, Unit, show, bind, (<<<), ($), (==), (&&), (<$>))
+import Test.Assert (ASSERT, assert')
+import Test.StrongCheck (quickCheck)
+import Test.StrongCheck.Generic (GenericValue, runGenericValue)
+import Data.Argonaut.Core hiding (toNumber)
 
 
 newtype MyRecord = MyRecord { foo :: String, bar :: Int}
 derive instance genericMyRecord :: Generic MyRecord
+instance eqMyRecord :: Eq MyRecord where
+  eq = gEq
+
+instance showMyRecord :: Show MyRecord where
+  show = gShow
+
+
+newtype DeepRecord = DeepRecord { outer :: String
+                                , inner :: MyRecord}
+derive instance genericDeepRecord :: Generic DeepRecord
+instance eqDeepRecord :: Eq DeepRecord where
+  eq = gEq
+
+instance showDeepRecord :: Show DeepRecord where
+  show = gShow
+
+
 
 data User = Anonymous
           | Guest String
@@ -44,6 +58,11 @@ data User = Anonymous
                        }
 derive instance genericUser :: Generic User
 
+instance eqGenericUser :: Eq User where
+  eq = gEq
+
+instance showUser :: Show User where
+  show = gShow
 
 data AllNullary = Nullary1 | Nullary2 | Nullary3
 derive instance genericAllNullary :: Generic AllNullary
@@ -77,12 +96,12 @@ instance eqUnwrapTestSingle :: Eq UnwrapTestSingle where
 
 prop_iso_generic :: Options -> GenericValue -> Boolean
 prop_iso_generic opts genericValue =
-  Right val.spine == genericDecodeJson' opts val.signature (genericEncodeJson' opts val.signature val.spine)
+  Right val.spine == genericDecodeJson' opts Nil val.signature (genericEncodeJson' opts val.signature val.spine)
   where val = runGenericValue genericValue
 
 prop_decoded_spine_valid :: Options -> GenericValue -> Boolean
 prop_decoded_spine_valid opts genericValue =
-  Right true == (isValidSpine val.signature <$> genericDecodeJson' opts val.signature (genericEncodeJson' opts val.signature val.spine))
+  Right true == (isValidSpine val.signature <$> genericDecodeJson' opts Nil val.signature (genericEncodeJson' opts val.signature val.spine))
   where val = runGenericValue genericValue
 
 checkAesonCompat :: Boolean
@@ -94,7 +113,7 @@ checkAesonCompat =
     myLeft = Left "Foo" :: Either String String
     myRight = Right "Bar" :: Either Int String
     unwrapMult = UnwrapTestMult 8 "haha"
-    unwrapSingle = UnwrapTestSingle 8 
+    unwrapSingle = UnwrapTestSingle 8
   in
         Aeson.encodeJson myTuple      == fromArray [fromNumber $ toNumber 1, fromNumber $ toNumber 2, fromString "Hello"]
     &&  Aeson.encodeJson myJust       == fromString "Test"
@@ -117,7 +136,7 @@ genericsCheck opts = do
   let mLeft = Right (Left 2) :: Either String (Either Int Int)
   let mTuple = Tuple (Tuple (Tuple 2 3) "haha") "test"
   let unwrapMult = UnwrapTestMult 8 "haha"
-  let unwrapSingle = UnwrapTestSingle 8 
+  let unwrapSingle = UnwrapTestSingle 8
   log "Check that decodeJson' and encodeJson' form an isomorphism .."
   assert' " Check all nullary:" (valEncodeDecode opts vNullary)
   assert' " Check multiple args:" (valEncodeDecode opts mArgs)
@@ -168,9 +187,29 @@ genericsCheck opts = do
     valEncodeDecode :: forall a. (Eq a, Generic a) => Options -> a -> Boolean
     valEncodeDecode opts val = ((Right val) == _) <<< genericDecodeJson opts <<< genericEncodeJson opts $ val
 
+checkErrors :: forall eff.
+  Eff ( console :: CONSOLE, err :: EXCEPTION, random :: RANDOM, assert :: ASSERT| eff) Unit
+checkErrors = do
+  log "checking for Guest"
+  checkErrorHistory (DeepRecord { outer: " " , inner : MyRecord {foo : "Test", bar : 42}})
+    "{\"outer\" : \"123\", \"inner\": {\"foo\" : \"hi\" , \"bar\" : \"32\"} }"
+
+checkErrorHistory :: forall e a. (Eq a, Generic a, Show a) => a -> String -> Eff ( err :: EXCEPTION , console :: CONSOLE, assert :: ASSERT | e) Unit
+checkErrorHistory a input = do
+  let result = decodeListing input :: Either DecodeError a
+  print result
+  assert' "blah"  (result == Left (decodeError ("bar" : "inner" : Nil) "Expected an integer number"))
+
+decodeListing :: forall a. (Generic a) => String -> Either DecodeError a
+decodeListing listingString = do
+  json <- lmap (decodeError Nil) $ jsonParser listingString
+  decodeJson json
+
 
 main:: forall e. Eff ( err :: EXCEPTION, random :: RANDOM, console :: CONSOLE, assert :: ASSERT | e ) Unit
 main = do
+  log "check errors"
+  checkErrors
   assert' "aesonCompatcheck: " checkAesonCompat
   log "genericsCheck check for argonautOptions"
   genericsCheck Argonaut.options
